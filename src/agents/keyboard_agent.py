@@ -1,6 +1,5 @@
 from typing import Tuple
-
-from src.agents.agent import BaseAgent
+from .agent import BaseAgent
 
 
 class KeyBoardAgent(BaseAgent):

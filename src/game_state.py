@@ -32,6 +32,7 @@ class GameState:
         self.grid = {} # key is a tuple of row and col
         self.centre_col = int(self.num_cols // 2)
         self.game_complete = False
+        self.verbose = False
 
     def check_if_node_in_grid(self, node: Node) -> bool:
         ''' Checks if the node is within the specfic grid of 7X6.
@@ -80,9 +81,9 @@ class GameState:
 
 
     def _gameOver(self, node: Node):
-        print(f"Checking if for game over with node : {node.row, node.col}")
-        print(node.cumulative_sum)
         if abs(node.cumulative_sum.row_sum) >= WINNING_PIECES or abs(node.cumulative_sum.col_sum) >= WINNING_PIECES or abs(node.cumulative_sum.pos_slope_diag_sum) >= WINNING_PIECES or abs(node.cumulative_sum.neg_slope_diag_sum) >= WINNING_PIECES:
+            if self.verbose:
+                print(f"Game over while checking for node : {node}")
             return True
         return False
 
@@ -96,7 +97,6 @@ class GameState:
     def _updateRowNextNodesSums(self, node):
         right_node = self.grid.get((node.row, node.col + 1), None)
         if right_node is None or right_node.value != node.value:
-            print(f"terminating row update at : {right_node}")
             # no need to update anything since the right node anyways started with 1 or -1 value for row_sum since it's left was empty
             return
         else:
@@ -109,10 +109,11 @@ class GameState:
 
     def _updatePosSlopeDiagUpperNextNodesSum(self, node):
         '''
+        Recursively update the cumulative sum for pos_slope_diag_sum when a node is inserted. The goal is to update the
+        sum for nodes to the right, when the same plater plays the intermediate move.
         '''
         pos_slope_diag_upper_node = self.grid.get((node.row + 1, node.col + 1), None) # r+1, c+1
         if pos_slope_diag_upper_node is None or pos_slope_diag_upper_node.value != node.value:
-            print(f"Existing pos slop lookahead sum : {pos_slope_diag_upper_node}")
             return
         else:
             pos_slope_diag_upper_node.cumulative_sum.pos_slope_diag_sum = node.cumulative_sum.pos_slope_diag_sum + self.current_player
@@ -122,9 +123,12 @@ class GameState:
             return self._updatePosSlopeDiagUpperNextNodesSum(pos_slope_diag_upper_node)
 
     def _updateNegSlopeDiagLowerNextNodesSum(self, node):
+        '''
+        Recursively update the cumulative sum for neg_slope_diag_sum when a node is inserted. The goal is to update the
+        sum for nodes to the right, when the same plater plays the intermediate move.
+        '''
         neg_slope_diag_lower_node = self.grid.get((node.row - 1, node.col + 1), None) # r-1, c+1
         if neg_slope_diag_lower_node is None or neg_slope_diag_lower_node.value != node.value:
-            print(f"Existing neg slop lookahead sum : {neg_slope_diag_lower_node}")
             return
         else:
             neg_slope_diag_lower_node.cumulative_sum.neg_slope_diag_sum = node.cumulative_sum.neg_slope_diag_sum + self.current_player
@@ -144,7 +148,6 @@ class GameState:
         5. If not, repeat above for next node
         Repeat above steps for row, and both diagonals
         '''
-        print(f"Updating middle node")
         self._updateRowNextNodesSums(node)
         if self.game_complete:
             return
@@ -154,13 +157,11 @@ class GameState:
             return
         # update the upper nodes corresponding to positive slop diagonal (nodes to the right)
         self._updatePosSlopeDiagUpperNextNodesSum(node)
-        print(f"Finished updating for middle node")
         return
 
     def updateNodeCumulativeSum(self, player_number: int, action: Tuple[int, int]) -> Sum:
         curr_node = Node(row=action[0], col=action[1])
         col_prev_node = self.edge_nodes[action[1] - 1]  # since grid is 1 indexed
-        # print(f"printing previous col node: {col_prev_node}")
         assert col_prev_node.row == action[0] - 1 and col_prev_node.col == action[1], f"Move is not a valid move"
         # if the player plays a blocking move then the most recent node starts with a new sum else we add to the sum
         # from previous node for both row and col
@@ -204,7 +205,6 @@ class GameState:
         '''
         self.move_numer += 1
         curr_cumulative_sum = self.updateNodeCumulativeSum(player_number, action)
-        print(f"after playing action, the sum of the played node is : {curr_cumulative_sum}")
         curr_node = Node(row=action[0], col=action[1], value=player_number, cumulative_sum=curr_cumulative_sum)
         self.edge_nodes[action[1]-1] = curr_node
         self.grid[(action[0], action[1])] = curr_node
@@ -236,13 +236,12 @@ class GameState:
         '''
         is_blocking = False
         if prev_node is not None:
-            print(f"checking prev node for blocking : {-1*self.current_player*sum_accessor_func(prev_node.cumulative_sum)}")
-            print(-1*self.current_player)
             is_blocking = -1*self.current_player*sum_accessor_func(prev_node.cumulative_sum) == WINNING_PIECES-1
 
         if next_node is not None:
             max_lookahead_sum = self.getMaxLookAheadSum(next_node, dir, sum_accessor_func)
-            print(f"next node was not none and the max lookahead sum is : {max_lookahead_sum}")
+            if self.verbose:
+                print(f"next node was not none and the max lookahead sum is : {max_lookahead_sum}")
             if prev_node:
                 is_blocking = -1*self.current_player*(sum_accessor_func(prev_node.cumulative_sum) + max_lookahead_sum) >= WINNING_PIECES-1
             else:
@@ -258,31 +257,30 @@ class GameState:
         # Ideally below node would always be present but for the first row that's not true.
         below_node = self.grid.get((node.row-1, node.col), None)
         if below_node and -1*self.current_player*below_node.cumulative_sum.col_sum == WINNING_PIECES-1:
-            print(f"Col blocking move : {node.row, node.col}")
+            if self.verbose:
+                print(f"Col blocking move : {node.row, node.col}")
             return True
 
         # row check
         left_node = self.grid.get((node.row, node.col-1), None)
         right_node = self.grid.get((node.row, node.col+1), None)
-        print(f"left node while checking for blocking: {left_node}")
         blocking_row = self._blockingConnection(
             left_node, right_node, (0,1), lambda cum_sum: cum_sum.row_sum if cum_sum else 0
         )
-        print(f"row blocking is : {blocking_row}")
         if blocking_row:
-            print(f"Row blocking move : {node.row, node.col}")
+            if self.verbose:
+                print(f"Row blocking move : {node.row, node.col}")
             return blocking_row
 
         # positive slope diag check
         left_node = self.grid.get((node.row-1, node.col - 1), None)
         right_node = self.grid.get((node.row + 1, node.col + 1), None)
-        ### Print stuff to be removed later
-        print(f"checking for positive slop blocking,left node: {left_node}\nright_node: {right_node}")
         blocking_pos_diag = self._blockingConnection(
             left_node, right_node, (1, 1), lambda cum_sum: cum_sum.pos_slope_diag_sum if cum_sum else 0
         )
         if blocking_pos_diag:
-            print(f"Positive diagonal blocking move : {node.row, node.col}")
+            if self.verbose:
+                print(f"Positive diagonal blocking move : {node.row, node.col}")
             return blocking_pos_diag
 
         # Negative slope diag check
@@ -292,7 +290,8 @@ class GameState:
             left_node, right_node, (-1, 1), lambda cum_sum: cum_sum.neg_slope_diag_sum if cum_sum else 0
         )
         if blocking_neg_diag:
-            print(f"Negative Diagonal blocking move : {node.row, node.col}")
+            if self.verbose:
+                print(f"Negative Diagonal blocking move : {node.row, node.col}")
             return blocking_neg_diag
 
         return False

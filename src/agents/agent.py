@@ -11,7 +11,6 @@ class BaseAgent:
         self.BLOCKING_WEIGHT = (10**WINNING_PIECES)/2
         self.WEIGHTS = {num_pieces: 10 ** num_pieces for num_pieces in range(WINNING_PIECES + 1)}
         self.CENTRE_COL_WEIGHT = 2
-        print(f"Weights are: {self.WEIGHTS}")
 
     def getAction(self, game_state: "GameState") -> Tuple[int, int]:
         """
@@ -51,12 +50,12 @@ class BaseAgent:
             else 0
         )
         max_neg_slope_sum = max(self.identifier*move.cumulative_sum.neg_slope_diag_sum, max_neg_slope_diag_lookahead_sum)
-        print(f"Checking if move : {move.row, move.col} is blocking")
+
         if game_state.isBlockingMove(move):
+            if game_state.verbose:
+                print(f"Move : {move.row, move.col} is blocking")
             score += self.BLOCKING_WEIGHT
 
-        # print(f"printing best sums for move")
-        print(max_row_sum, self.identifier*move.cumulative_sum.col_sum, max_pos_slope_sum, max_neg_slope_sum)
         score += (
             self.WEIGHTS[max_row_sum] + self.WEIGHTS[self.identifier*move.cumulative_sum.col_sum] +
             self.WEIGHTS[max_pos_slope_sum] + self.WEIGHTS[max_neg_slope_sum]
@@ -77,15 +76,13 @@ class GreedyAgent(BaseAgent):
         best_score = float('-inf')
         best_move = None
         for move, move_node in moves.items():
-            print('-'*20 + f'{move}' + '-'*20)
             move_node.cumulative_sum = game_state.updateNodeCumulativeSum(self.identifier, move)
-            print(f"Current sums of the move: {move_node.cumulative_sum}")
             score = self.scoreMove(game_state, move_node)
-            print(f"Score for the move is :{score}")
             if score > best_score:
                 best_score = score
                 best_move = move
-        print(f"best score is : {best_score}")
+        if game_state.verbose:
+            print(f"best score is : {best_score} for best move : {best_move}")
         return best_move
 
 class MinMaxAgent(BaseAgent):
